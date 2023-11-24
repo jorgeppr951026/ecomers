@@ -33,7 +33,7 @@ async def user(id: str , current_us: UserDB = Depends(current_user)):
 
 
 @router.post("/" , response_model= User,status_code = status.HTTP_201_CREATED)
-async def user_create(user: UserDB, current_us: UserDB = Depends(current_user)):
+async def user_create(user: UserDB):
     
     if await users_collection.find_one({"username": user.username}):
         raise exeptions.USER_EXIST
