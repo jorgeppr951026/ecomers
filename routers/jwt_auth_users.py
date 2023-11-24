@@ -6,13 +6,15 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 
 from datetime import datetime, timedelta
+from typing import Optional
 
-from db.client.db_config import users_collection,usersdb_collection
-from db.models.user import User, UserDB
+from db.client.db_config import usersdb_collection
+from db.models.user_model import User, UserDB, userdb_scheme, user_scheme
+from db.models import exeptions
 
 SECRET_KEY = "09d25e094faa6ca1995c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
 crypt = CryptContext(schemes=["bcrypt"])
@@ -22,74 +24,57 @@ oauth2 = OAuth2PasswordBearer(tokenUrl="login")
 
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(data: dict, expires_delta: timedelta ):
+ 
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.utcnow() + timedelta(ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 
-async def serarch_user(username: str):
-    user = await users_collection.find_one({"username": username})
-    if user is None:
-        raise HTTPException(status_code= status.HTTP_401_UNAUTHORIZED,
-                            detail="El usuario no existe",
-                            headers={"WWW-Authenticate": "Bearer"},)
-    return User(**user)
 
-async def serarch_user_db(username: str):
+
+async def serarch_user_db(username: str) -> UserDB:
     userdb = await usersdb_collection.find_one({"username": username})
+    
     if userdb is None:
-        raise HTTPException(status_code= status.HTTP_401_UNAUTHORIZED,
-                            detail="El usuario no existe",
-                            headers={"WWW-Authenticate": "Bearer"},)
-    return UserDB(**userdb[username])
+        raise exeptions.USER_DONT_EXIST
+    return UserDB(**userdb_scheme(userdb))
 
 
 async def auth_user(token: str = Depends(oauth2)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
     try:
         username = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]).get("sub")
         if username is None:
-            raise credentials_exception
+            raise exeptions.INVALID_CREDENTIALS
     except JWTError:
-        raise credentials_exception
+        raise exeptions.INVALID_CREDENTIALS
 
-    return serarch_user(username)
+    return await serarch_user_db(username)
 
 
-async def current_user(user: User = Depends(auth_user)) -> User:
+async def current_user(user: UserDB = Depends(auth_user)) -> User:
     if user.disable:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Usuario inactivo")
+        raise exeptions.USER_INACTIVE
     return user
 
 
 @router.post("/login")
 async def login(form: OAuth2PasswordRequestForm = Depends()):
-    user = user_db.get(form.username)
+    user = await serarch_user_db(form.username)
     if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="El usuario no es correcto.")
+        raise exeptions.WRONG_USER
 
-    user = serarch_user_db(form.username)
-
-    if not crypt.verify(form.password, user.password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="La contraseña no es correcta.")
+    if not crypt.verify(form.password, user.password): # type: ignore
+        raise exeptions.WRONG_PASSW
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username, },
+        data={"sub": user.username, }, # type: ignore
         expires_delta=access_token_expires,
     )
 
@@ -97,5 +82,7 @@ async def login(form: OAuth2PasswordRequestForm = Depends()):
 
 
 @router.get("/users/me")
-async def me(user: User = Depends(current_user)) -> User:
-    return user
+async def me(user: UserDB = Depends(current_user)) :
+    user_dict = user.dict()
+    del user_dict["password"]
+    return user_dict
