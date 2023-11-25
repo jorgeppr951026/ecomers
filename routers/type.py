@@ -16,8 +16,13 @@ router = APIRouter(prefix="/types", tags=["types"], responses={status.HTTP_404_N
 
 
 @router.get("/",response_model=List[Type])
-async def types(skip: int = 0, limit: int = 10):
-    cursor = type_collection.find().skip(skip).limit(limit)
+async def types(skip: int = 0, limit: int = 10, category_id = None):
+    cursor = ()
+    if category_id : 
+        cursor = type_collection.find({"category_id": ObjectId(category_id)}).skip(skip).limit(limit)
+    else:
+       cursor = type_collection.find().skip(skip).limit(limit)
+    
     types = [Type(**type_scheme(type)) async for type in cursor]
     return types
 
