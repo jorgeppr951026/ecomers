@@ -1,9 +1,29 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from routers import  user,jwt_auth_users,category, type, products
 
 app = FastAPI()
+
+# Configuración CORS
+origins = [
+    "http://localhost",
+    "http://localhost:8000",
+    "*"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+
+
 
 #Routers
 app.include_router(user.router)
