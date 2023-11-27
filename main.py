@@ -6,18 +6,6 @@ from routers import  user,jwt_auth_users,category, type, products
 
 app = FastAPI()
 
-# Configuración CORS
-origins = ["*"]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 
 
 
