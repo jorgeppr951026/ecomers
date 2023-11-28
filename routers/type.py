@@ -49,3 +49,24 @@ async def type_delete(id: str ):
     
     if not found:
         raise raise_exept(status.HTTP_404_NOT_FOUND,"No se ha encontrado la categoria")
+    
+    
+#Create type
+@router.post("/{category_id}", response_model= Type, status_code= status.HTTP_201_CREATED)
+async def type_create(category_id:str, type: Type):
+    category = await category_collection.find_one({"_id": ObjectId(category_id)})
+    
+    if category:
+        
+        if await type_collection.find_one({"type": type.type}):
+            raise raise_exept(status.HTTP_400_BAD_REQUEST, f"Ese tipo de {category['name']} ya existe")
+        
+        try:
+            type_dict = type.model_dump(exclude={"id"})
+            type_dict['category_id'] = ObjectId(category_id)
+            type_in_db = await type_collection.insert_one(type_dict)
+            type.id = str(type_in_db.inserted_id)
+            return type
+        except :
+            raise raise_exept(status.HTTP_400_BAD_REQUEST, "No se pudo crear el tipo")
+    raise raise_exept(status.HTTP_400_BAD_REQUEST, f"Esa categoria no existe")

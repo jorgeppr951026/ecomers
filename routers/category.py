@@ -1,18 +1,19 @@
+from fastapi import APIRouter, Body, status, Depends, File, UploadFile, Form
+from fastapi.encoders import jsonable_encoder
 from bson import ObjectId
-from fastapi import APIRouter, status, Depends
+from PIL import Image
 from typing import List
 
-from passlib.context import CryptContext 
- 
-from db.client.db_config import category_collection, type_collection
+from db.client.db_config import category_collection, type_collection, product_collection
 from db.models.category_model import Category,category_scheme
 from db.models.type_model import Type, type_scheme
 from db.models.exeptions import raise_exept
-from routers.jwt_auth_users import current_user
 
-
+import uuid, os
 
 router = APIRouter(prefix="/categorys", tags=["category"], responses={status.HTTP_404_NOT_FOUND : {"message": "No encontrado"}})
+
+
 
 
 @router.get("/",response_model=List[Category])
@@ -25,20 +26,59 @@ async def categorys(skip: int = 0, limit: int = 10):
 @router.get("/{id}",response_model=Category)
 async def category(id: str):
     category = await category_collection.find_one({"_id": ObjectId(id)})
+    
     return category_scheme(category)
 
 
-@router.post("/", response_model= Category, status_code= status.HTTP_201_CREATED)
+@router.get("/{id}/count", response_model=dict)
+async def category_count(id: str):
+    types = type_collection.find({"category_id": ObjectId(id)})
+    types = await types.to_list(length=None)
+    count = 0
+    for val in types:
+       count += await product_collection.count_documents({"type_id": val['_id']})
+    return {"count_types": len(types), "count_products": count}
+
+
+
+@router.post("/", response_model= Category, status_code= status.HTTP_201_CREATED )
 async def category_create(category: Category):
     if await category_collection.find_one({"name": category.name}):
         raise raise_exept(status.HTTP_400_BAD_REQUEST, "Esa categoria ya existe")
     try:
-        cate = await category_collection.insert_one(category.model_dump())
+      
+        cate = await category_collection.insert_one(jsonable_encoder(category))
         new_cate = await category_collection.find_one({"_id": cate.inserted_id})
+      
         return category_scheme(new_cate)
     except :
         raise raise_exept(status.HTTP_400_BAD_REQUEST, "No se pudo crear la categoria")
 
+@router.post("/{id}/upload/")
+async def create_upload_file(id: str ,file: UploadFile = File(...)):
+    # Generar un nombre único para el archivo
+    item = category_scheme(await category_collection.find_one({"_id": ObjectId(id)}))
+    if not "default" in item['image']:
+        eliminar_imagen_anterior(item['image'])
+        
+    random_token = str(uuid.uuid4())
+    extension = str(file.filename).split(".")[-1]
+    image_path = f"static/images/{random_token}.{extension}"
+    file_content = await file.read()
+    
+    with open(image_path, "wb") as image_file:
+        image_file.write(file_content)
+        
+    with Image.open(image_path) as image:
+        image = image.resize(size= (400,400))
+        image.save(image_path)
+        
+    image_file.close()
+    image.close()
+    
+    updated_categorie = await category_collection.update_one({"_id": ObjectId(id)}, {"$set": {"image": image_path}})
+   
+    return {"message": "La imagense actualizo satisfactoriamente"}
 
 
 @router.put("/{id}" , response_model= Category )
@@ -61,22 +101,13 @@ async def category_delete(id: str ):
     
     
     
-#Create type
-@router.post("/{category_id}/type", response_model= Type, status_code= status.HTTP_201_CREATED)
-async def type_create(category_id:str, type: Type):
-    category = await category_collection.find_one({"_id": ObjectId(category_id)})
-    
-    if category:
-        
-        if await type_collection.find_one({"type": type.type}):
-            raise raise_exept(status.HTTP_400_BAD_REQUEST, f"Ese tipo de {category['name']} ya existe")
-        
+def eliminar_imagen_anterior(ruta_imagen_anterior):
+  
+    if os.path.exists(ruta_imagen_anterior):
         try:
-            type_dict = type.model_dump(exclude={"id"})
-            type_dict['category_id'] = ObjectId(category_id)
-            type_in_db = await type_collection.insert_one(type_dict)
-            type.id = str(type_in_db.inserted_id)
-            return type
-        except :
-            raise raise_exept(status.HTTP_400_BAD_REQUEST, "No se pudo crear el tipo")
-    raise raise_exept(status.HTTP_400_BAD_REQUEST, f"Esa categoria no existe")
+            # Elimina la imagen
+            os.remove(ruta_imagen_anterior)
+        except Exception as e:
+            print(f"No se pudo eliminar la imagen. Error: {e}")
+    else:
+        print(f"La imagen {ruta_imagen_anterior} no existe.")

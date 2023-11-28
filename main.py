@@ -4,8 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers import  user,jwt_auth_users,category, type, products
 
+
+
+
 app = FastAPI()
 
+    
 # Configuración CORS
 origins = [
     "http://localhost",
@@ -20,6 +24,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 
