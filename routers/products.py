@@ -40,7 +40,7 @@ async def delete_product(id: str):
         raise raise_exept(status.HTTP_400_BAD_REQUEST, "No se a encontrado el producto")
 
 
-@router.post("/", response_model=Product , status_code= status.HTTP_201_CREATED)
+@router.post("/{type_id}", response_model=Product , status_code= status.HTTP_201_CREATED)
 async def create_product(product: Product, type_id: str):
     found  = await product_collection.find_one({"name": product.name})
     if not type_id:
